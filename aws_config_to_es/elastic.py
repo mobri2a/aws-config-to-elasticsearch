@@ -27,6 +27,9 @@ class ElasticSearch(object):
             Returns the id of the newly inserted value or None
             if the added date is not there, then I'm adding it in
         """
+
+        headers = {'content-type': 'application/json'}
+
         if not isinstance(json_message, dict):
             json_message_dict = json.loads(json_message)
         else:
@@ -42,11 +45,11 @@ class ElasticSearch(object):
             response = requests.put(self.connections + "/" +
                                     index_name + "/" +
                                     doc_type + "/" +
-                                    index_id, data=json_message)
+                                    index_id, data=json_message, headers=headers)
         else:
             response = requests.post(self.connections + "/" +
                                      index_name + "/" +
-                                     doc_type, data=json_message)
+                                     doc_type, data=json_message, headers=headers)
 
         self.log.info(
             "response: " + str(
@@ -68,6 +71,8 @@ class ElasticSearch(object):
         the data won't be tokenized, and therefore can be
         searched by the value itself
         """
+
+        headers = {'content-type': 'application/json'}
 
         payload = {
             "template": "*",
@@ -98,4 +103,4 @@ class ElasticSearch(object):
         }
         requests.put(
             self.connections + "/_template/configservice",
-            data=json.dumps(payload))
+            data=json.dumps(payload), headers=headers)
