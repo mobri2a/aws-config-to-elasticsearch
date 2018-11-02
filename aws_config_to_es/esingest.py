@@ -17,11 +17,21 @@ from configservice_util import ConfigServiceUtil
 DOWNLOADED_SNAPSHOT_FILE_NAME = "/tmp/configsnapshot" + \
                                 str(time.time()) + ".json.gz"
 
-REGIONS = [
-    'us-west-1', 'us-west-2', 'eu-west-1', 'us-east-1',
-    'eu-central-1', 'ap-southeast-1', 'ap-northeast-1',
-    'ap-southeast-2', 'ap-northeast-2', 'sa-east-1']
+my_session = boto3.session.Session()
+my_region = my_session.region_name
 
+# If no region configured just use us-east-1 because it doesn't matter
+if my_region == None: my_region = 'us-east-1'
+
+ec2 = boto3.client('ec2', region_name=my_region)
+
+response = ec2.describe_regions()
+
+REGIONS = []
+
+for region in response['Regions']:
+    REGIONS.append(region['RegionName'])
+    # REGIONSEL[region['RegionName']] = 0
 
 def get_configuration_snapshot_file(s3conn, bucket_name, file_partial_name):
 
@@ -109,13 +119,16 @@ def loop_through_regions(cur_region, iso_now_time, es):
         "Using the following bucket name to search "
         "for the snapshot: " + str(bucket_name))
 
-    verbose_log.info("Creating snapshot")
-    snapshotid = config_service.deliver_snapshot()
-    verbose_log.info("Got a new snapshot with an id of " + str(snapshotid))
-    if snapshotid is None:
-        app_log.info(
-            "AWS Config isn't setup or your requests are being throttled")
-        return
+    if not args.snapshotid:
+        verbose_log.info("Creating snapshot")
+        snapshotid = config_service.deliver_snapshot()
+        verbose_log.info("Got a new snapshot with an id of " + str(snapshotid))
+        if snapshotid is None:
+            app_log.info(
+                "AWS Config isn't setup or your requests are being throttled")
+            return
+    else:
+        snapshotid = args.snapshotid
 
     snapshot_file_path = get_configuration_snapshot_file(
         s3conn, bucket_name, snapshotid)
@@ -152,7 +165,7 @@ def loop_through_regions(cur_region, iso_now_time, es):
                      " items into ElasticSearch from " + cur_region)
     if could_not_add > 0:
         app_log.warn("Couldn't add " + str(could_not_add) +
-                     " to ElasticSearch. Maybe you have permission issues? ")
+                     " items to ElasticSearch. Maybe you have permission issues? ")
 
 
 def main(args, es):
@@ -187,6 +200,10 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', '-v', action='store_true', default=False,
                         help='If selected, the app runs in verbose mode '
                              '-- a lot more logs!')
+    parser.add_argument('--snapshotid', '-s',
+                        help='If specified the app will read the snapshot Id '
+                        'rather than perform a snapshot. A single region must '
+                        'also be specified.')
     args = parser.parse_args()
 
     logging.basicConfig(format=' %(name)-12s:  %(message)s')
@@ -218,6 +235,12 @@ if __name__ == "__main__":
         exit()
 
     destination = "http://" + args.destination
+
+    if args.snapshotid and not args.region:
+        app_log.error(
+            "You must specify a region when providing a snapshot id."
+            )
+        exit()
 
     verbose_log.info("Setting up the elasticsearch instance")
 
